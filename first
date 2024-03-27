@@ -1,0 +1,246 @@
+import pandas as pd
+from openpyxl import load_workbook
+
+path = r'C:\Users\ishaansharma8\Desktop\cobol_modules_work'
+files = [r'\CINBM056.txt',
+         # r'\EAMBM002.txt',
+         r'\EAMRE050.txt',
+         r'\EAMSP124.txt',
+         r'\EIFBA035.txt']
+copybook = r'\EIFCDAWS.txt'
+
+
+def get_variable_value_back_traced(para_name, variable, i):
+    f = open(path + files[i])
+    out = ''
+    value = ''
+    lines = f.readlines()
+    lines = [l.strip() for l in lines]
+    lines = dict(enumerate(lines))
+
+    for key, value in lines.items():
+        sentence = value.strip()
+        if para_name[:-1] in sentence and 'PERFORM' in sentence:
+            ind = int(key) - 1
+            while ind > 0:
+                ind = ind - 1
+                sent = lines[ind]
+                if 'MOVE' in sent and 'TO' in sent and variable in sent:
+                    str_list = []
+                    for x in sent.split(' '):
+                        if x:
+                            str_list.append(x)
+                    out = ' '.join(str_list)
+                    out = out.split(' ')[1]
+                    break
+
+    num = 0
+    if out:
+        # print(out)
+        num = 1
+    return out, num
+
+
+def get_variable_from_copybook(variable):
+    f = open(path + copybook)
+    out = ''
+    value = ''
+    lines = f.readlines()
+    # lines = [l.strip() for l in lines]
+    # lines = dict(enumerate(lines))
+
+    statement = []
+    statement_str = ''
+    flag_read = 0
+    for value in lines:
+        sentence = value.strip()
+        if variable in sentence:
+            flag_read = 1
+        if flag_read == 1:
+            temp_list = sentence.split(' ')
+            for x in temp_list:
+                if x:
+                    statement.append(x)
+        if '.' in sentence:
+            flag_read = 0
+    statement_str += ' '.join(statement)
+    out = statement[-1]
+
+    num = 0
+    if out:
+        # print(out)
+        num = 1
+    return out, num
+
+
+def search_sql_statements(variable):
+    f = open(path + variable)
+    lines = f.readlines()
+    lines = dict(enumerate(lines))
+
+    exec_flag = 0
+    exec_statements = []
+
+    for key, value in lines.items():
+        if exec_flag == 1:
+            sentence = value.strip()
+            if 'SELECT' in sentence or 'INSERT' in sentence or 'UPDATE' in sentence or 'DELETE' in sentence:
+                print(sentence)
+                exec_statements.append(sentence)
+            if len(sentence.strip(' ')) > 1 or len(sentence.strip(' ')) == 0:
+                exec_flag = 0
+            else:
+                exec_statements.append(sentence)
+        if 'EXEC SQL' == value.strip():
+            exec_flag = 1
+        if 'END-EXEC.' == value.strip():
+            exec_flag = 0
+
+    return '\n'.join(exec_statements)
+
+
+def find_call_statements_and_invoke_lines(j):
+    f = open(path + files[j])
+
+    call_flag = 0
+    lines = f.readlines()
+    lines = [l.strip() for l in lines]
+    enum_lines = dict(enumerate(lines))
+    call_line_number = []
+    temp_call_list = []
+
+    call_statement = []
+    for key, value in enum_lines.items():
+        sentence = value.strip()
+        if call_flag == 1 and len(sentence.split(' ')) <= 2:
+            temp_call_list.append(sentence)
+            # call_line_number.append(key)
+        if '.' in sentence and call_flag == 1:
+            call_flag = 0
+            call_statement.append(temp_call_list)
+            temp_call_list = []
+        if 'CALL' in sentence.split(' ') and '*' not in sentence and call_flag == 0 and 'CALL ' in sentence:
+            # print(key)
+            call_flag = 1
+            temp_call_list.append(sentence)
+            call_line_number.append(key)
+            if '.' in sentence:
+                call_flag = 0
+                call_statement.append(temp_call_list)
+                temp_call_list = []
+
+    calls = []
+    for x in call_statement:
+        temp_str = ' '.join(x)
+        calls.append(temp_str)
+
+    invoke = []
+    for key in call_line_number:
+        lower_bound = key - 20
+        index = key - 1
+        temp_list = []
+        stop_read = 0
+        while index >= lower_bound and stop_read == 0:
+            value = enum_lines[index]
+            if 'MOVE ' in value or 'SET ' in value:
+                str_list = []
+                for x in value.split(' '):
+                    if x:
+                        str_list.append(x)
+                value = ' '.join(str_list)
+                temp_list.append(value)
+                index -= 1
+            elif '*' in value or not value:
+                index -= 1
+            else:
+                stop_read = 1
+        invoke.append(temp_list)
+
+    call_descriptions = []
+    t = 1
+    for i in range(0, len(calls)):
+        while True:
+            called_mod = calls[i].split(' ')[t]
+            if not called_mod:
+                t += 1
+            else:
+                call_descriptions.append(called_mod)
+                break
+    print(call_descriptions)
+
+    call_names = []
+    for i in range(0, len(call_descriptions)):
+        found_name = 0
+        for x in invoke[i]:
+            if found_name == 0:
+                if 'MOVE' in x:
+                    if call_descriptions[i] in x.split(' ')[-1]:
+                        call_names.append(x.split(' ')[1])
+                        found_name = 1
+                if 'SET' in x:
+                    if call_descriptions[i] in x.split(' ')[1]:
+                        call_names.append(x.split(' '[-1]))
+                        found_name = 1
+        if found_name == 0:
+            a = call_line_number[i]
+            while True:
+                sentence = enum_lines[a]
+                if sentence:
+                    if (len(sentence.split(' ')) == 1 and sentence[len(sentence) - 1] == '.'
+                            and '*' not in sentence):
+                        if sentence[:4].isnumeric():
+                            break
+                a -= 1
+            value, found_name = get_variable_value_back_traced(sentence, call_descriptions[i], j)
+            if value:
+                call_names.append(value)
+        if found_name == 0:
+            value, found_name = get_variable_from_copybook(call_descriptions[i])
+            if value:
+                call_names.append(value[:-1])
+        if found_name == 0:
+            print("failed")
+
+    sql_stat_in_called = []
+    for d in call_names:
+        sql = ''
+        for f in files:
+            mod_name = f[1:-4]
+            print(mod_name, (d[1:])[:-1])
+            if mod_name == (d[1:])[:-1]:
+                sql = search_sql_statements(f)
+
+        sql_stat_in_called.append(sql)
+
+    print(calls)
+    print(call_names)
+    print(invoke)
+
+    # Create Dataframe
+
+    df = pd.DataFrame(columns=['Calling Module', 'Called Module Variable', 'Call Statement',
+                               'Called Module Passed Value', 'Invoking Conditions', 'Called Conditions',
+                               'SQL statements in Called Module'])
+
+    module_name = files[j][1:-4]
+    for b in range(0, len(calls)):
+        mod_name = module_name
+        t = 1
+        called_mod = call_descriptions[b]
+        called_statement = ' '.join(call_statement[b])
+        called_mod_name = call_names[b]
+        invoking_cond = '\n'.join(invoke[b])
+        called_cond = ' '
+        sql_statements_called = sql_stat_in_called[b]
+        df.loc[len(df)] = [mod_name, called_mod, called_statement, called_mod_name, invoking_cond, called_cond,
+                           sql_statements_called]
+
+    print(df)
+
+    excel_name = r'C:\Users\ishaansharma8\Desktop\cobol_modules_work\\' + module_name + '.xlsx'
+
+    df.to_excel(excel_name, index=False)
+
+
+for i in range(0, len(files)):
+    find_call_statements_and_invoke_lines(i)
