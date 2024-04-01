@@ -1,0 +1,354 @@
+from graphviz import Digraph
+
+str1 = r'C:\Users\ishaansharma8\Desktop\EAMO081A_Stored procedure.txt'
+# str1 = r'C:\Users\ishaansharma8\Desktop\sample_cobol_1.txt'
+# str1 = r'C:\Users\ishaansharma8\Desktop\cobol_modules_work\CINBM056.txt'
+
+para_list = []
+para_info = {}
+proc_div_para_list = []
+avoid_list = ['until', 'end-perform']
+index = 0
+node_list = []
+
+
+# Function to Search for Paragraphs through all the code
+def search_all_para():
+    flag0 = 0
+    f = open(str1)
+    for line in f:
+        sentence = line.strip()
+
+        if 'PROCEDURE DIVISION' in sentence:
+            # print(line)
+            flag0 = 1
+
+        if (('PERFORM' in sentence) or ('THRU' in sentence)) and flag0 == 1:
+            f1 = 0
+            if 'EXIT' in sentence or 'RETURN' in sentence:
+                continue
+            else:
+                for temp in avoid_list:
+                    if temp in sentence.lower():
+                        f1 = 1
+                if f1 == 0:
+                    # print(sentence)
+                    word = sentence.split(' ')[1]
+                    para_list.append(word)
+
+
+# Function to Search for Paragraphs only through the procedure division
+def search_procedure_div_for_para():
+    flag0 = 0
+    f = open(str1)
+    for line in f:
+        sentence = line.strip()
+
+        if 'PROCEDURE DIVISION' in sentence:
+            flag0 = 1
+
+        if 'RETURN' in sentence or 'STOP RUN' in sentence or 'GO BACK' in sentence:
+            flag0 = 0
+
+        if (('PERFORM' in sentence) or ('THRU' in sentence)) and flag0 == 1:
+            f1 = 0
+            if 'EXIT' in sentence or 'RETURN' in sentence:
+                continue
+            else:
+                for temp in avoid_list:
+                    if temp in sentence.lower():
+                        f1 = 1
+                if f1 == 0:
+                    # print(sentence)
+                    word = sentence.split(' ')[1]
+                    proc_div_para_list.append(word)
+
+
+# Function to add detected Phrase to Node of the flowchart
+def add_to_node_list(name):
+    if name not in node_list:
+        node_list.append(name)
+
+
+# Function to search Paragraphs inside a par, along with if-else / eval conditions
+def search_paras_inside_para(para_name):
+    flag1 = 0
+    flag_if_eval = 0
+    flag_exec_sql = 0
+    flag_loop = 0
+    f = open(str1)
+    para_line = para_name + '.'
+    temp_list = []
+    temp_list_if = []
+    temp_list_perform = []
+    condition = ''
+    when_condition = ''
+    else_flag = 0
+    table_list = []
+    perform_sentence = ''
+
+    add_to_node_list(para_name)
+    grouping_flag = 0
+    temp_condition = ''
+    for line in f:
+        sentence = line.strip()
+
+        if para_line == sentence:
+            flag1 = 2
+        if (('END-IF' in sentence or 'END-EVALUATE' in sentence)
+                and flag_if_eval == 1):
+            flag_if_eval = 0
+            if temp_list_if:
+                temp_list.append(temp_list_if)
+                temp_list_if = []
+            else_flag = 0
+        if 'ELSE' in sentence or 'OTHER' in sentence:
+            if 'ELSE' in sentence:
+                else_flag = 1
+            if temp_list_if:
+                temp_list.append(temp_list_if)
+                temp_list_if = []
+        if '.' == sentence or '---' in sentence or '***' in sentence:
+            flag1 -= 1
+        if 'EXEC SQL' in sentence and flag1 == 1:
+            flag_exec_sql = 1
+        if 'END-EXEC' in sentence and flag1 == 1:
+            flag_exec_sql = 0
+        if ('UNTIL' in sentence or 'VARYING FROM' in sentence) and flag1 == 1:
+            flag_loop = 1
+            perform_sentence = sentence
+            temp_list_perform.append(perform_sentence)
+            add_to_node_list(perform_sentence)
+        if 'END-PERFORM' in sentence and flag1 == 1:
+            flag_loop = 0
+            temp_list_perform.append(perform_sentence)
+            temp_list.append(temp_list_perform)
+            temp_list_perform = []
+
+        if 'FROM' in sentence and flag_exec_sql == 1 and flag1 == 1:
+            table_name = sentence.split(' ')
+            temp_table_name = []
+            for x in table_name:
+                if x:
+                    temp_table_name.append(x)
+            print(temp_table_name)
+            try:
+                table_name = 'FROM' + f' {temp_table_name[1]}'
+            except:
+                pass
+            if table_name not in table_list:
+                table_list.append(table_name)
+                temp_list.append(table_name)
+                add_to_node_list(table_name)
+
+        if (('IF' in sentence or 'WHEN' in sentence) and flag1 == 1
+                and 'END-IF' != sentence and '*' not in sentence):
+            condition = sentence
+            flag_if_eval = 1
+            grouping_flag = 1
+            if 'WHEN' in condition:
+                if 'WHEN OTHER' in condition:
+                    when_condition = 'WHEN NOT' + when_condition
+                    condition = when_condition
+                else:
+                    when_condition += condition.replace('WHEN', '')
+            else:
+                pass
+
+        if ((('PERFORM' in sentence) or ('THRU' in sentence)) and
+                flag1 == 1 and flag_if_eval == 0):
+            sentence = sentence
+            f_temp = 0
+            if 'EXIT' not in sentence:
+                for temp in avoid_list:
+                    if temp in sentence.lower():
+                        f_temp = 1
+                if f_temp == 0:
+                    word = sentence.split(' ')[1]
+                    if flag_loop == 1:
+                        temp_list_perform.append(word)
+                    else:
+                        temp_list.append(word)
+                    add_to_node_list(word)
+
+        if flag1 == 1 and flag_if_eval == 1:
+            if ('PERFORM' in sentence) or ('THRU' in sentence) or ('RETURN' in sentence):
+                f_temp = 0
+                if 'EXIT' not in sentence:
+                    if 'RETURN' not in sentence:
+                        for temp in avoid_list:
+                            if temp in sentence.lower():
+                                f_temp = 1
+                        if f_temp == 0:
+                            word = sentence.split(' ')[1]
+                            if grouping_flag == 1:
+                                if else_flag == 1 and 'WHEN' not in condition:
+                                    condition = "ELSE " + condition
+                                    else_flag = 0
+                                # print(para_name, condition)
+                                if flag_loop == 1:
+                                    temp_list_perform.append(condition)
+                                    temp_list_perform.append(word)
+                                else:
+                                    temp_list_if.append(condition)
+                                    temp_list_if.append(word)
+                                add_to_node_list(condition)
+                                add_to_node_list(word)
+                                grouping_flag = 0
+                            elif grouping_flag == 0:
+                                if flag_loop == 1:
+                                    temp_list_perform.append(word)
+                                else:
+                                    temp_list_if.append(word)
+                                add_to_node_list(word)
+                    else:
+                        if condition not in temp_list_if:
+                            temp_list_if.append(condition)
+                            add_to_node_list(condition)
+                        temp_list_if.append(sentence)
+                        add_to_node_list(sentence)
+            # else:
+            #     print(sentence)
+
+            if 'OTHER' not in condition and 'LK-' in sentence:
+                temp_list2 = sentence.split(' ')
+                word = temp_list2[-1]
+                print(word)
+                temp_list.append(word)
+                add_to_node_list(word)
+
+        # if ((('PERFORM' in line.strip()) or ('THRU' in line.strip()) or ('RETURN' in line.strip()))
+        #         and flag1 == 1 and flag_loop == 1):
+
+    para_info[para_name] = temp_list
+
+
+# Calling functions
+search_all_para()
+for para in para_list:
+    search_paras_inside_para(para)
+
+search_procedure_div_for_para()
+print(proc_div_para_list)
+print(para_info)
+print(node_list)
+
+main_list_order = []
+
+##################################################################################################
+# plotting code
+
+dot = Digraph(engine='dot')
+# 'circo', 'dot', 'fdp', 'neato', 'osage', 'patchwork', 'sfdp', 'twopi'
+
+node_dict = {'1': 'START', '2': 'PROCEDURE DIVISION'}
+
+for i in range(3, len(node_list) + 3):
+    node_dict[str(i)] = node_list[i - 3]
+print(node_dict)
+
+####
+# go through all possible combinations and make a list of pairs of dependencies, and define col, row of node
+
+final_para_order_list = []
+row = len(node_list)
+col = 4
+para_levels_for_graph_cols = {'START': 0, 'PROCEDURE DIVISION': 4}
+para_levels_for_graph_rows = {'START': row, 'PROCEDURE DIVISION': row}
+last_para = ''
+
+
+def find_para_child_list(parent_l):
+    global last_para
+    print(parent_l)
+    for para_name, child_name in para_info.items():
+        if para_name == parent_l:
+            for child_l in child_name:
+                final_para_order_list.append([parent_l, child_l])
+                if isinstance(child_l, str):
+                    last_para = child_l
+                    find_para_child_list(child_l)
+                elif isinstance(child_l, list) and child_l:
+                    print(child_l)
+                    last_para = child_l[-1]
+                    find_para_child_list(child_l[1])
+
+
+for i in range(0, len(proc_div_para_list)):
+    try:
+        if last_para:
+            final_para_order_list.append([last_para, proc_div_para_list[i]])
+            last_para = proc_div_para_list[i]
+    except:
+        pass
+    find_para_child_list(proc_div_para_list[i])
+
+print(final_para_order_list)
+
+for key1, value1 in node_dict.items():
+    if 'START' == value1 or 'RETURN' in value1:
+        dot.node(key1, value1)
+    elif 'WHEN' in value1 or 'IF' in value1:
+        dot.node(key1, value1, shape='diamond')
+    elif 'FROM' in value1:
+        dot.node(key1, value1, shape='cylinder')
+    else:
+        dot.node(key1, value1, shape='rectangle box')
+
+
+# dot.node('1', 'Start', pos='1,18!')
+# dot.node('2', 'PROCEDURE DIVISION', pos='0,18!')
+
+
+def find_index(name):
+    index_for_name = ''
+    for k, j in node_dict.items():
+        if j == name:
+            index_for_name = k
+            break
+    return index_for_name
+
+
+edge_list = []
+parent_list = []
+edge_color_list = [
+    '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#00FFFF', '#FF00FF', '#C0C0C0', '#808080',
+    '#800000', '#808000', '#008000', '#800080', '#008080', '#000080', '#FFA500', '#A52A2A', '#8B4513', '#2E8B57',
+    '#DAA520', '#D2691E', '#5F9EA0', '#1E90FF', '#FF4500', '#7B68EE', '#48D1CC', '#6A5ACD', '#7FFF00', '#DEB887',
+    '#BC8F8F', '#F5DEB3', '#FFFACD', '#FFE4B5', '#F5F5DC', '#FDF5E6', '#FFEFD5', '#FFDAB9', '#EEDD82', '#D2B48C',
+    '#FAF0E6', '#FFDEAD', '#EEE8AA', '#98FB98', '#AFEEEE', '#DB7093', '#FFE4E1', '#FFB6C1', '#FFA07A', '#20B2AA',
+    '#87CEFA', '#778899', '#B0C4DE', '#32CD32', '#FF00FF', '#66CDAA', '#9ACD32', '#40E0D0', '#E6E6FA', '#F0F8FF',
+    '#FAEBD7', '#00FFFF', '#7CFC00', '#FFF5EE', '#DC143C', '#00FFFF', '#00008B', '#008B8B', '#B8860B', '#A9A9A9',
+    '#006400', '#BDB76B', '#8B008B', '#556B2F', '#FF8C00', '#9932CC', '#8B0000', '#E9967A', '#9400D3', '#FF1493',
+    '#00BFFF', '#696969', '#1E90FF', '#B22222', '#FFFAF0', '#228B22', '#FF00FF', '#DCDCDC', '#F8F8FF', '#FFD700',
+    '#DAA520', '#808080', '#008000', '#ADFF2F', '#F0FFF0', '#FF69B4', '#CD5C5C', '#4B0082', '#FFFFF0', '#F0E68C',
+    '#E6E6FA', '#FFF0F5', '#7CFC00', '#FFFACD'
+]
+color_index = -1
+dot.edge('1', '2')
+dot.edge('2', '3')
+for i in final_para_order_list:
+    parent = i[0]
+    child = i[1]
+    if parent in list(para_info.keys()) and parent not in parent_list:
+        color_index += 1
+        parent_list.append(parent)
+        print(color_index)
+    if isinstance(child, list):
+        if [parent, child[0]] not in edge_list:
+            dot.edge(find_index(parent), find_index(child[0]), color=edge_color_list[color_index])
+            edge_list.append([parent, child[0]])
+        for j in range(0, len(child)):
+            try:
+                if [child[j], child[j + 1]] not in edge_list:
+                    dot.edge(find_index(child[j]), find_index(child[j + 1]), color=edge_color_list[color_index])
+                    edge_list.append([child[j], child[j + 1]])
+            except:
+                pass
+    elif isinstance(child, str):
+        if [parent, child] not in edge_list:
+            # dot.edge(find_index(parent), find_index(child), tailport="e", headport="w", constraint='false')
+            dot.edge(find_index(parent), find_index(child), color=edge_color_list[color_index])
+# print(edge_list)
+
+dot.render('test-output/flowchart.gv', view=True)
